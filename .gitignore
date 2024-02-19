@@ -6,3 +6,8 @@
 /notebooks/catboost_info/learn_error.tsv
 /notebooks/catboost_info/time_left.tsv
 /notebooks/catboost_info/test_error.tsv
+/catboost_info/
+/predictions.csv
+/model_params.pkl
+/dist/spaceshiptitanic-0.1.0.tar.gz
+/notebooks/wandb/
