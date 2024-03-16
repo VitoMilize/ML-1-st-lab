@@ -11,3 +11,5 @@
 /model_params.pkl
 /dist/spaceshiptitanic-0.1.0.tar.gz
 /notebooks/wandb/
+/notebooks/.ipynb_checkpoints/catboost_model_params_search-checkpoint.ipynb
+/notebooks/prediction.csv
