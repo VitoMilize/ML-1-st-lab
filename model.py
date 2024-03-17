@@ -1,197 +1,118 @@
 import argparse
 import logging
 import os
-import pandas as pd
 import joblib
+import pandas as pd
 from catboost import CatBoostClassifier
-from sklearn.model_selection import cross_val_score
-from sklearn.impute import KNNImputer
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
 
-binary_features = ['VIP', 'CryoSleep']
-cryo_sleep_depending_features = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
-categorical_features_without_cabin = ['HomePlanet', 'Destination']
-categorical_features_cleared = ['HomePlanet', 'Destination', 'Deck', 'Side']
-numerical_features = ['ShoppingMall', 'Spa', 'VRDeck', 'RoomService', 'FoodCourt', 'Age']
-imputer = KNNImputer(n_neighbors=1)
+# Пути к файлам и общие данные
+pd.set_option('future.no_silent_downcasting', True)
+best_features = ['CryoSleep', 'RoomService', 'Spa', 'VRDeck', 'Deck', 'Side', 'SumSpends']
+model_params_path = './data/model/model_params.pkl'
+predictions_path = './data/results.csv'
+
+# Cоздание папок для логов и параметров модели
+os.makedirs('C:\\Users\\vitya\\ProjectsML\\SpaceshipTitanic\\data', exist_ok=True)
+os.makedirs('C:\\Users\\vitya\\ProjectsML\\SpaceshipTitanic\\data\\model', exist_ok=True)
+
+# Настройка логгинга
+logger = logging.getLogger(__name__)
+formatter = logging.Formatter('%(asctime)s:%(levelname)s: %(message)s')
+file_handler = logging.FileHandler('./data/log_file.log')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 
+# Обертка для модели
 class My_Classifier_Model:
     def __init__(self):
         self.model = None
 
-    def train(self, path_to_dataset):
-        logging.info("Training the model")
+    @staticmethod
+    def train(path_to_dataset):
+        logger.info("Training the model...")
 
-        df = pd.read_csv(f'{path_to_dataset}')
-        df = df.drop(columns=['Name', 'PassengerId'])
+        train_df = pd.read_csv(f'{path_to_dataset}', index_col='PassengerId')
 
-        for i in range(len(df)):
-            if df.at[i, 'CryoSleep'] == True:
-                for feature in cryo_sleep_depending_features:
-                    df.at[i, feature] = 0.0
+        train_df['Transported'].replace({False: 0, True: 1})
+        train_df[['Deck', 'CabinNumber', 'Side']] = train_df['Cabin'].str.split('/', expand=True)
+        train_df.drop(['Cabin', 'Name'], axis=1, inplace=True)
 
-        rows_with_many_missing_values = df[df.isna().sum(axis=1) > 1]
-        rows_with_one_missing_value = df[df.isna().sum(axis=1) == 1]
-        df = df.dropna()
-        df[["Deck", "CabinNumber", "Side"]] = df["Cabin"].str.split("/", expand=True)
-        df = df.drop(columns=['Cabin', 'CabinNumber'])
-        df = df.astype({'CryoSleep': int, 'VIP': int, 'Transported': int})
-        df = pd.get_dummies(df, columns=categorical_features_cleared)
+        object_columns = [column for column in train_df.columns if
+                          train_df[column].dtype == 'object' or train_df[column].dtype == 'category']
+        expense_columns = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
+        train_df['SumSpends'] = train_df[expense_columns].sum(axis=1)
 
-        for feature in numerical_features:
-            rows_with_missing_feature = rows_with_one_missing_value[rows_with_one_missing_value[feature].isna()]
-            rows_with_missing_feature[["Deck", "CabinNumber", "Side"]] = rows_with_missing_feature["Cabin"].str.split(
-                "/", expand=True)
-            rows_with_missing_feature = rows_with_missing_feature.drop(columns=['Cabin', 'CabinNumber'])
-            rows_with_missing_feature = rows_with_missing_feature.astype(
-                {'CryoSleep': int, 'VIP': int, 'Transported': int})
-            rows_with_missing_feature = pd.get_dummies(rows_with_missing_feature, columns=categorical_features_cleared)
-            df = pd.concat([df, rows_with_missing_feature], ignore_index=True)
-            df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
+        null_columns = train_df.isnull().sum().sort_values(ascending=False)
+        null_columns = list(null_columns[null_columns > 1].index)
 
-        for feature in categorical_features_without_cabin:
-            rows_with_missing_feature = rows_with_one_missing_value[rows_with_one_missing_value[feature].isna()]
-            rows_with_missing_feature[["Deck", "CabinNumber", "Side"]] = rows_with_missing_feature["Cabin"].str.split(
-                "/", expand=True)
-            rows_with_missing_feature = rows_with_missing_feature.drop(columns=['Cabin', 'CabinNumber'])
-            rows_with_missing_feature = rows_with_missing_feature.astype(
-                {'CryoSleep': int, 'VIP': int, 'Transported': int})
-            rows_with_missing_feature = pd.get_dummies(rows_with_missing_feature, columns=categorical_features_cleared)
-            df = pd.concat([df, rows_with_missing_feature], ignore_index=True)
-            df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
+        oc = OrdinalEncoder()
+        train_df[object_columns] = train_df[object_columns].astype('category')
+        train_df[object_columns] = oc.fit_transform(train_df[object_columns])
+        ct = ColumnTransformer([("imp", SimpleImputer(strategy='mean'), null_columns)])
+        train_df[null_columns] = ct.fit_transform(train_df[null_columns])
 
-        for feature in binary_features:
-            rows_with_missing_feature = rows_with_one_missing_value[rows_with_one_missing_value[feature].isna()]
-            rows_with_missing_feature[["Deck", "CabinNumber", "Side"]] = rows_with_missing_feature["Cabin"].str.split(
-                "/", expand=True)
-            rows_with_missing_feature = rows_with_missing_feature.drop(columns=['Cabin', 'CabinNumber'])
-            rows_with_missing_feature = pd.get_dummies(rows_with_missing_feature, columns=categorical_features_cleared)
-            df = pd.concat([df, rows_with_missing_feature], ignore_index=True)
-            df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
+        X = train_df
+        y = X.pop('Transported')
 
-        rows_with_missing_feature = rows_with_one_missing_value[rows_with_one_missing_value['Cabin'].isna()]
-        rows_with_missing_feature = rows_with_missing_feature.drop(columns='Cabin')
-        rows_with_missing_feature = rows_with_missing_feature.astype({'CryoSleep': int, 'VIP': int, 'Transported': int})
-        rows_with_missing_feature = pd.get_dummies(rows_with_missing_feature,
-                                                   columns=categorical_features_without_cabin)
-        df = pd.concat([df, rows_with_missing_feature], ignore_index=True)
-        df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
+        model = CatBoostClassifier(verbose=False, eval_metric='Accuracy', iterations=450,
+                                   learning_rate=0.050891473714946345, depth=7)
+        model.fit(X[best_features], y)
 
-        rows_with_many_missing_values = rows_with_many_missing_values.drop(columns=['Cabin', 'HomePlanet', 'Destination'])
+        logger.info("Training completed.")
 
-        df = pd.concat([df, rows_with_many_missing_values], ignore_index=True)
-        df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
+        joblib.dump(model, model_params_path)
 
-        target = 'Transported'
-        X = df.drop(columns=target)
-        y = df[target]
+        logger.info("Model saved.")
 
-        model = CatBoostClassifier(iterations=494, learning_rate=0.08537674565386481, depth=4, random_state=42)
-        model.fit(X, y)
-
-        logging.info("Training completed.")
-
-        joblib.dump(model, 'model_params.pkl')
-
-        logging.info("Model saved.")
-
-    def predict(self, dataset):
-        logging.info("Predicting with the model")
-
-        model_params_path = 'model_params.pkl'
-
+    @staticmethod
+    def predict(path_to_dataset):
         if os.path.exists(model_params_path):
             model = joblib.load(model_params_path)
+            logger.info("Predicting with the model...")
         else:
-            logging.error("Error: Model not trained. Please run 'train' command first.")
+            logger.error("Model not trained. Please run 'train' command first.")
             return
 
-        df = pd.read_csv(f'{dataset}')
-        df = df.drop(columns=['Name'])
+        test_df = pd.read_csv(f'{path_to_dataset}', index_col='PassengerId')
 
-        for i in range(len(df)):
-            if df.at[i, 'CryoSleep'] == True:
-                for feature in cryo_sleep_depending_features:
-                    df.at[i, feature] = 0.0
+        test_df[['Deck', 'Num', 'Side']] = test_df['Cabin'].str.split('/', expand=True)
+        test_df.drop(['Cabin', 'Name'], axis=1, inplace=True)
 
-        rows_with_many_missing_values = df[df.isna().sum(axis=1) > 1]
-        rows_with_one_missing_value = df[df.isna().sum(axis=1) == 1]
-        df = df.dropna()
-        df[["Deck", "CabinNumber", "Side"]] = df["Cabin"].str.split("/", expand=True)
-        df = df.drop(columns=['Cabin', 'CabinNumber'])
-        df = df.astype({'CryoSleep': int, 'VIP': int})
-        df = pd.get_dummies(df, columns=categorical_features_cleared)
+        object_columns = [column for column in test_df.columns if
+                          test_df[column].dtype == 'object' or test_df[column].dtype == 'category']
+        expense_columns = ['RoomService', 'FoodCourt', 'ShoppingMall', 'Spa', 'VRDeck']
+        test_df['SumSpends'] = test_df[expense_columns].sum(axis=1)
+        null_columns = test_df.isnull().sum().sort_values(ascending=False)
+        null_columns = list(null_columns[null_columns > 1].index)
 
-        for feature in numerical_features:
-            rows_with_missing_feature = rows_with_one_missing_value[rows_with_one_missing_value[feature].isna()]
-            rows_with_missing_feature[["Deck", "CabinNumber", "Side"]] = rows_with_missing_feature["Cabin"].str.split(
-                "/", expand=True)
-            rows_with_missing_feature = rows_with_missing_feature.drop(columns=['Cabin', 'CabinNumber'])
-            rows_with_missing_feature = rows_with_missing_feature.astype({'CryoSleep': int, 'VIP': int})
-            rows_with_missing_feature = pd.get_dummies(rows_with_missing_feature, columns=categorical_features_cleared)
-            df = pd.concat([df, rows_with_missing_feature], ignore_index=True)
-            ids = df['PassengerId']
-            df = df.drop(columns=['PassengerId'])
-            df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
-            df['PassengerId'] = ids
+        oc = OrdinalEncoder()
+        test_df[object_columns] = test_df[object_columns].astype('category')
+        test_df[object_columns] = oc.fit_transform(test_df[object_columns])
+        ct = ColumnTransformer([("imp", SimpleImputer(strategy='mean'), null_columns)])
+        test_df[null_columns] = ct.fit_transform(test_df[null_columns])
 
-        for feature in categorical_features_without_cabin:
-            rows_with_missing_feature = rows_with_one_missing_value[rows_with_one_missing_value[feature].isna()]
-            rows_with_missing_feature[["Deck", "CabinNumber", "Side"]] = rows_with_missing_feature["Cabin"].str.split(
-                "/", expand=True)
-            rows_with_missing_feature = rows_with_missing_feature.drop(columns=['Cabin', 'CabinNumber'])
-            rows_with_missing_feature = rows_with_missing_feature.astype({'CryoSleep': int, 'VIP': int})
-            rows_with_missing_feature = pd.get_dummies(rows_with_missing_feature, columns=categorical_features_cleared)
-            df = pd.concat([df, rows_with_missing_feature], ignore_index=True)
-            ids = df['PassengerId']
-            df = df.drop(columns=['PassengerId'])
-            df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
-            df['PassengerId'] = ids
+        prediction = model.predict(test_df[best_features])
 
-        for feature in binary_features:
-            rows_with_missing_feature = rows_with_one_missing_value[rows_with_one_missing_value[feature].isna()]
-            rows_with_missing_feature[["Deck", "CabinNumber", "Side"]] = rows_with_missing_feature["Cabin"].str.split(
-                "/", expand=True)
-            rows_with_missing_feature = rows_with_missing_feature.drop(columns=['Cabin', 'CabinNumber'])
-            rows_with_missing_feature = pd.get_dummies(rows_with_missing_feature, columns=categorical_features_cleared)
-            df = pd.concat([df, rows_with_missing_feature], ignore_index=True)
-            ids = df['PassengerId']
-            df = df.drop(columns=['PassengerId'])
-            df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
-            df['PassengerId'] = ids
+        logger.info("Prediction completed.")
 
-        rows_with_missing_feature = rows_with_one_missing_value[rows_with_one_missing_value['Cabin'].isna()]
-        rows_with_missing_feature = rows_with_missing_feature.drop(columns='Cabin')
-        rows_with_missing_feature = rows_with_missing_feature.astype({'CryoSleep': int, 'VIP': int})
-        rows_with_missing_feature = pd.get_dummies(rows_with_missing_feature,
-                                                   columns=categorical_features_without_cabin)
-        df = pd.concat([df, rows_with_missing_feature], ignore_index=True)
-        ids = df['PassengerId']
-        df = df.drop(columns=['PassengerId'])
-        df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
-        df['PassengerId'] = ids
+        final = pd.DataFrame()
+        final.index = test_df.index
+        final['Transported'] = prediction
+        final['Transported'].replace(0, False, inplace=True)
+        final['Transported'].replace(1, True, inplace=True)
+        final.to_csv(predictions_path)
 
-        rows_with_many_missing_values = rows_with_many_missing_values.drop(
-            columns=['Cabin', 'HomePlanet', 'Destination'])
-
-        df = pd.concat([df, rows_with_many_missing_values], ignore_index=True).reset_index(drop=True)
-        ids = df['PassengerId']
-        df = df.drop(columns=['PassengerId'])
-        df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
-
-        predictions = model.predict(df).astype(bool)
-
-        logging.info("Prediction completed.")
-
-        output = pd.DataFrame({'PassengerId': ids, 'Transported': predictions})
-        output.to_csv('predictions.csv', index=False)
-
-        logging.info("Prediction saved.")
+        logger.info("Prediction saved.")
 
 
 if __name__ == '__main__':
     model = My_Classifier_Model()
 
+    # Настройка парсера для обработки поведения модели через CLI
     parser = argparse.ArgumentParser()
     parser.add_argument('command')
     parser.add_argument('--dataset')
@@ -202,11 +123,11 @@ if __name__ == '__main__':
         if args.dataset:
             model.train(args.dataset)
         else:
-            print("Path is required")
+            logger.error("Path is required.")
     elif args.command == 'predict':
         if args.dataset:
             model.predict(args.dataset)
         else:
-            print("Path is required")
+            logger.error("Path is required.")
     else:
-        print(f"Unknown command: {args.command}")
+        logger.error(f"Unknown command: {args.command}.")

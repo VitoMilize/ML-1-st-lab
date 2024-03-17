@@ -13,3 +13,6 @@
 /notebooks/wandb/
 /notebooks/.ipynb_checkpoints/catboost_model_params_search-checkpoint.ipynb
 /notebooks/prediction.csv
+/data/model/model_params.pkl
+/data/results.csv
+/data/log_file.log

@@ -1,5 +1,4 @@
 from flask import Flask, request, abort
-import subprocess
 
 from model import My_Classifier_Model
 
@@ -27,4 +26,4 @@ def predict():
         return abort(500, str(e))
 
 if __name__ == '__main__':
-  app.run(debug=True)
+  app.run()
