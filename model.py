@@ -8,14 +8,28 @@ from sklearn.preprocessing import OrdinalEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 
+# Пути к файлам и общие данные
+pd.set_option('future.no_silent_downcasting', True)
+best_features = ['CryoSleep', 'RoomService', 'Spa', 'VRDeck', 'Deck', 'Side', 'SumSpends']
+model_params_path = 'data/model/model_params.pkl'
+predictions_path = 'data/results.csv'
+logs_path = 'data/log_file.log'
+
 
 # Обертка для модели
 class My_Classifier_Model:
     def __init__(self):
         self.model = None
+        logger = logging.getLogger(__name__)
+        file_handler = logging.FileHandler(logs_path)
+        formatter = logging.Formatter('%(asctime)s:%(levelname)s: %(message)s')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        logger.setLevel(logging.INFO)
+        self.logger = logger
 
     @staticmethod
-    def train(path_to_dataset):
+    def train(path_to_dataset, logger):
         logger.info("Training the model...")
 
         train_df = pd.read_csv(f'{path_to_dataset}', index_col='PassengerId')
@@ -52,7 +66,7 @@ class My_Classifier_Model:
         logger.info("Model saved.")
 
     @staticmethod
-    def predict(path_to_dataset):
+    def predict(path_to_dataset, logger):
         if os.path.exists(model_params_path):
             model = joblib.load(model_params_path)
             logger.info("Predicting with the model...")
@@ -93,24 +107,9 @@ class My_Classifier_Model:
 
 
 if __name__ == '__main__':
-    # Пути к файлам и общие данные
-    pd.set_option('future.no_silent_downcasting', True)
-    best_features = ['CryoSleep', 'RoomService', 'Spa', 'VRDeck', 'Deck', 'Side', 'SumSpends']
-    model_params_path = 'data/model/model_params.pkl'
-    predictions_path = 'data/results.csv'
-    logs_path = 'data/log_file.log'
-
     # Cоздание папок для логов и параметров модели
     os.makedirs('data', exist_ok=True)
     os.makedirs('data\\model', exist_ok=True)
-
-    # Настройка логгинга
-    logger = logging.getLogger(__name__)
-    file_handler = logging.FileHandler(logs_path)
-    formatter = logging.Formatter('%(asctime)s:%(levelname)s: %(message)s')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    logger.setLevel(logging.INFO)
 
     model = My_Classifier_Model()
 
@@ -123,13 +122,13 @@ if __name__ == '__main__':
 
     if args.command == 'train':
         if args.dataset:
-            model.train(args.dataset)
+            model.train(args.dataset, model.logger)
         else:
-            logger.error("Path is required.")
+            model.logger.error("Path is required.")
     elif args.command == 'predict':
         if args.dataset:
-            model.predict(args.dataset)
+            model.predict(args.dataset, model.logger)
         else:
-            logger.error("Path is required.")
+            model.logger.error("Path is required.")
     else:
-        logger.error(f"Unknown command: {args.command}.")
+        model.logger.error(f"Unknown command: {args.command}.")
