@@ -1,9 +1,11 @@
 FROM python:3.11-slim
 
-WORKDIR /app
+RUN apt-get update && apt-get install -y curl
 
 COPY . .
 
 RUN pip install spaceshiptitanic-0.1.0-py3-none-any.whl
 
-CMD [ "flask", "run" ]
+EXPOSE 5000
+
+CMD [ "flask", "app.py" ]

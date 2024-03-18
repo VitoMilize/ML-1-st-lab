@@ -3,7 +3,7 @@ from flask import Flask, request, abort
 from model import My_Classifier_Model
 
 app = Flask(__name__)
-model = My_Classifier_Model()
+
 
 @app.route('/train', methods=['POST'])
 def train():
@@ -15,6 +15,7 @@ def train():
     except ValueError as e:
         return abort(500, str(e))
 
+
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -25,5 +26,7 @@ def predict():
     except ValueError as e:
         return abort(500, str(e))
 
+
 if __name__ == '__main__':
-  app.run()
+    model = My_Classifier_Model()
+    app.run()

@@ -8,23 +8,6 @@ from sklearn.preprocessing import OrdinalEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 
-# Пути к файлам и общие данные
-pd.set_option('future.no_silent_downcasting', True)
-best_features = ['CryoSleep', 'RoomService', 'Spa', 'VRDeck', 'Deck', 'Side', 'SumSpends']
-model_params_path = './data/model/model_params.pkl'
-predictions_path = './data/results.csv'
-
-# Cоздание папок для логов и параметров модели
-os.makedirs('C:\\Users\\vitya\\ProjectsML\\SpaceshipTitanic\\data', exist_ok=True)
-os.makedirs('C:\\Users\\vitya\\ProjectsML\\SpaceshipTitanic\\data\\model', exist_ok=True)
-
-# Настройка логгинга
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter('%(asctime)s:%(levelname)s: %(message)s')
-file_handler = logging.FileHandler('./data/log_file.log')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-
 
 # Обертка для модели
 class My_Classifier_Model:
@@ -110,6 +93,25 @@ class My_Classifier_Model:
 
 
 if __name__ == '__main__':
+    # Пути к файлам и общие данные
+    pd.set_option('future.no_silent_downcasting', True)
+    best_features = ['CryoSleep', 'RoomService', 'Spa', 'VRDeck', 'Deck', 'Side', 'SumSpends']
+    model_params_path = 'data/model/model_params.pkl'
+    predictions_path = 'data/results.csv'
+    logs_path = 'data/log_file.log'
+
+    # Cоздание папок для логов и параметров модели
+    os.makedirs('data', exist_ok=True)
+    os.makedirs('data\\model', exist_ok=True)
+
+    # Настройка логгинга
+    logger = logging.getLogger(__name__)
+    file_handler = logging.FileHandler(logs_path)
+    formatter = logging.Formatter('%(asctime)s:%(levelname)s: %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.setLevel(logging.INFO)
+
     model = My_Classifier_Model()
 
     # Настройка парсера для обработки поведения модели через CLI
